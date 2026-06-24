@@ -97,6 +97,8 @@ window.I18N = {
     overGoal: "Over goal",
     units_g: "g",
     units_kcal: "kcal",
+    updateReady: "A new version is available",
+    update: "Update",
   },
   ar: {
     dir: "rtl",
@@ -188,6 +190,8 @@ window.I18N = {
     overGoal: "تجاوز الهدف",
     units_g: "غ",
     units_kcal: "سعرة",
+    updateReady: "يتوفر إصدار جديد",
+    update: "تحديث",
   },
 };
 

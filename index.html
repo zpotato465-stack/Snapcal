@@ -26,9 +26,30 @@
   <script src="app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
+      function notifyUpdate(reg) {
+        window.__swReg = reg;
+        window.dispatchEvent(new Event("snapcal-update"));
+      }
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("sw.js").catch(function (e) {
-          console.warn("SW registration failed", e);
+        navigator.serviceWorker.register("sw.js").then(function (reg) {
+          // A new worker may already be waiting (installed on a previous visit).
+          if (reg.waiting && navigator.serviceWorker.controller) notifyUpdate(reg);
+          reg.addEventListener("updatefound", function () {
+            var nw = reg.installing;
+            if (!nw) return;
+            nw.addEventListener("statechange", function () {
+              // Installed + an existing controller => this is an update, not first install.
+              if (nw.state === "installed" && navigator.serviceWorker.controller) notifyUpdate(reg);
+            });
+          });
+        }).catch(function (e) { console.warn("SW registration failed", e); });
+
+        // When the new worker takes control, reload once to load fresh assets.
+        var reloaded = false;
+        navigator.serviceWorker.addEventListener("controllerchange", function () {
+          if (reloaded) return;
+          reloaded = true;
+          window.location.reload();
         });
       });
     }

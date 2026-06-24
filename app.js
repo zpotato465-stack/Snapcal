@@ -793,6 +793,25 @@
     return bar;
   }
 
+  // ---------------------------------------------------------------- update banner
+  var updateShown = false;
+  function showUpdateBanner() {
+    if (updateShown) return;
+    updateShown = true;
+    var banner = el("div", { class: "update-banner" }, [
+      el("span", { text: "🔄 " + t("updateReady") }),
+      el("button", { class: "ub-btn", onclick: function () {
+        var reg = window.__swReg;
+        if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        else window.location.reload(); // fallback
+        banner.textContent = "…";
+      } }, [t("update")]),
+    ]);
+    // append outside #app so re-renders don't remove it
+    document.body.appendChild(banner);
+  }
+  window.addEventListener("snapcal-update", showUpdateBanner);
+
   // ---------------------------------------------------------------- toast
   function toast(msg) {
     var t0 = el("div", { class: "toast", text: msg });

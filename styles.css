@@ -266,6 +266,22 @@ label.field > span { display: block; font-size: .85rem; color: var(--muted); mar
 .stat { animation: rise .3s ease both; }
 .macro { animation: rise .34s ease both; }
 
+/* in-app update banner */
+.update-banner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(86px + var(--safe-b)); z-index: 90;
+  width: min(92%, calc(var(--maxw) - 24px));
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--card-2); color: var(--text); border: 1px solid var(--green-d);
+  padding: 12px 14px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  animation: bannerIn .3s ease both;
+}
+.update-banner .ub-btn {
+  flex: none; border: none; background: var(--green); color: #04210f;
+  font-weight: 800; padding: 9px 16px; border-radius: 10px;
+}
+@keyframes bannerIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translateX(-50%); } }
+
 /* respect reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
