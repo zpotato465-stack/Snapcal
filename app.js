@@ -56,6 +56,23 @@
   function round(n) { return Math.round(n); }
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
+  // run a callback after the element is painted (two rAFs) so CSS transitions play
+  function animateIn(fn) {
+    requestAnimationFrame(function () { requestAnimationFrame(fn); });
+  }
+  // count a number up from 0 -> target inside a text node
+  function countUp(node, target, dur) {
+    var start = null;
+    function frame(ts) {
+      if (start == null) start = ts;
+      var p = clamp((ts - start) / dur, 0, 1);
+      var eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      node.textContent = String(round(target * eased));
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
   // unit conversions
   var LB_PER_KG = 2.2046226218;
   function kgToLb(kg) { return kg * LB_PER_KG; }
@@ -135,6 +152,7 @@
 
   // ---------------------------------------------------------------- root render
   var route = "today";
+  var lastRoute = null;
   function setLang(lang) {
     S.lang = lang; window.SnapState = S; save();
     document.documentElement.lang = lang;
@@ -153,98 +171,144 @@
     else if (route === "add") screen = AddScreen();
     else if (route === "history") screen = HistoryScreen();
     else screen = SettingsScreen();
+    if (route !== lastRoute) { screen.classList.add("screen-in"); lastRoute = route; }
     root.appendChild(screen);
     root.appendChild(TabBar());
   }
 
-  // ---------------------------------------------------------------- Onboarding
+  // ---------------------------------------------------------------- Onboarding (one-question-at-a-time wizard)
   var onb = null;
-  function Onboarding() {
-    if (!onb) onb = { step: "form", units: S.units, profile: Object.assign({}, S.profile), goal: S.goal };
-    var wrap = el("div", { class: "screen" });
+  var STEPS = ["language", "units", "sex", "age", "height", "weight", "activity", "goal"];
 
-    var brand = el("div", { class: "brand" }, [
+  function Onboarding() {
+    if (!onb) onb = { i: 0, slideDir: 1, units: S.units, profile: Object.assign({}, S.profile), goal: S.goal, done: false };
+    var wrap = el("div", { class: "screen onb" });
+
+    var brand = el("div", { class: "brand brand-sm" }, [
       el("img", { src: "icons/icon-192.png", alt: "SnapCal" }),
       el("div", { class: "name", text: window.I18N[S.lang].appName }),
-      el("div", { class: "muted", text: t("tagline") }),
     ]);
     wrap.appendChild(brand);
 
-    if (onb.step === "result") {
-      wrap.appendChild(el("div", { class: "card goal-result" }, [
-        el("div", { class: "muted", text: t("yourGoal") }),
-        el("div", { class: "goal-number", text: String(onb.goal) }),
-        el("div", { class: "muted", text: t("kcalPerDay") }),
-      ]));
-      var mt = (function () { var sv = S.goal; S.goal = onb.goal; var m = macroTargets(); S.goal = sv; return m; })();
-      wrap.appendChild(el("div", { class: "stats" }, [
+    // ----- result screen -----
+    if (onb.done) {
+      var rcard = el("div", { class: "card goal-result step-card dir-next" });
+      rcard.appendChild(el("div", { class: "muted", text: t("yourGoal") }));
+      var gnum = el("div", { class: "goal-number", text: "0" });
+      rcard.appendChild(gnum);
+      rcard.appendChild(el("div", { class: "muted", text: t("kcalPerDay") }));
+      wrap.appendChild(rcard);
+      countUp(gnum, onb.goal, 900);
+
+      var mt = withGoal(onb.goal, macroTargets);
+      wrap.appendChild(el("div", { class: "stats step-card dir-next", style: "animation-delay:.1s" }, [
         statBox(mt.p + "g", t("protein")), statBox(mt.c + "g", t("carbs")), statBox(mt.f + "g", t("fat")),
       ]));
-      wrap.appendChild(el("button", { class: "btn", onclick: function () {
+      wrap.appendChild(el("button", { class: "btn pulse", onclick: function () {
         S.units = onb.units; S.profile = onb.profile; S.goal = onb.goal; S.onboarded = true; save();
-        onb = null; route = "today"; render();
+        onb = null; route = "today"; lastRoute = null; render();
       } }, [t("startTracking")]));
-      wrap.appendChild(el("button", { class: "btn ghost", style: "margin-top:10px", onclick: function () { onb.step = "form"; render(); } }, [t("back")]));
+      wrap.appendChild(el("button", { class: "btn ghost", style: "margin-top:10px", onclick: function () {
+        onb.done = false; onb.i = STEPS.length - 1; onb.slideDir = -1; render();
+      } }, [t("back")]));
       return wrap;
     }
 
-    // form
-    var c = el("div", { class: "card" });
-    c.appendChild(el("h2", { text: t("welcome") }));
-    c.appendChild(el("div", { class: "muted", style: "margin-bottom:14px", text: t("welcomeSub") }));
+    // ----- progress bar + counter -----
+    var total = STEPS.length;
+    var pct = ((onb.i + 1) / total) * 100;
+    var pbarFill = el("i");
+    wrap.appendChild(el("div", { class: "pbar" }, [pbarFill]));
+    wrap.appendChild(el("div", { class: "pcount muted", text: t("stepOf").replace("{n}", onb.i + 1).replace("{t}", total) }));
+    animateIn(function () { pbarFill.style.width = pct + "%"; });
 
-    // language
-    c.appendChild(fieldLabel(t("language"), seg([
-      { v: "en", label: "English", active: S.lang === "en" },
-      { v: "ar", label: "العربية", active: S.lang === "ar" },
-    ], function (v) { setLang(v); })));
+    // ----- the single question card -----
+    var dirClass = onb.slideDir < 0 ? "dir-prev" : (onb.slideDir > 0 ? "dir-next" : "");
+    onb.slideDir = 0; // consume; seg/select re-renders don't re-slide
+    var c = el("div", { class: "card step-card " + dirClass });
+    var key = STEPS[onb.i];
+    var enterInput = null; // input that should submit on Enter
 
-    // units
-    c.appendChild(fieldLabel(t("units"), seg([
-      { v: "metric", label: t("metric"), active: onb.units === "metric" },
-      { v: "imperial", label: t("imperial"), active: onb.units === "imperial" },
-    ], function (v) { onb.units = v; render(); })));
-
-    // sex
-    c.appendChild(fieldLabel(t("sex"), seg([
-      { v: "male", label: t("male"), active: onb.profile.sex === "male" },
-      { v: "female", label: t("female"), active: onb.profile.sex === "female" },
-    ], function (v) { onb.profile.sex = v; })));
-
-    // age
-    c.appendChild(numField(t("age"), onb.profile.age, function (val) { onb.profile.age = clamp(parseInt(val) || 0, 5, 120); }));
-
-    // height + weight (unit dependent)
-    if (onb.units === "metric") {
-      c.appendChild(numField(t("height") + " (" + t("cm") + ")", round(onb.profile.heightCm), function (v) { onb.profile.heightCm = clamp(parseFloat(v) || 0, 80, 250); }));
-      c.appendChild(numField(t("weight") + " (" + t("kg") + ")", round(onb.profile.weightKg), function (v) { onb.profile.weightKg = clamp(parseFloat(v) || 0, 25, 350); }));
-    } else {
-      var fi = cmToFtIn(onb.profile.heightCm);
-      var hrow = el("div", { class: "row" }, [
-        numField(t("height") + " (" + t("ft") + ")", fi.ft, function (v) { fi.ft = parseInt(v) || 0; onb.profile.heightCm = ftInToCm(fi.ft, fi.in); }),
-        numField(t("in"), fi.in, function (v) { fi.in = parseInt(v) || 0; onb.profile.heightCm = ftInToCm(fi.ft, fi.in); }),
-      ]);
-      c.appendChild(hrow);
-      c.appendChild(numField(t("weight") + " (" + t("lb") + ")", round(kgToLb(onb.profile.weightKg)), function (v) { onb.profile.weightKg = lbToKg(clamp(parseFloat(v) || 0, 50, 800)); }));
+    if (key === "language") {
+      c.appendChild(stepHead(t("language"), t("welcomeSub")));
+      c.appendChild(seg([
+        { v: "en", label: "English", active: S.lang === "en" },
+        { v: "ar", label: "العربية", active: S.lang === "ar" },
+      ], function (v) { setLang(v); }));
+    } else if (key === "units") {
+      c.appendChild(stepHead(t("units")));
+      c.appendChild(seg([
+        { v: "metric", label: t("metric"), active: onb.units === "metric" },
+        { v: "imperial", label: t("imperial"), active: onb.units === "imperial" },
+      ], function (v) { onb.units = v; render(); }));
+    } else if (key === "sex") {
+      c.appendChild(stepHead(t("sex")));
+      c.appendChild(seg([
+        { v: "male", label: t("male"), active: onb.profile.sex === "male" },
+        { v: "female", label: t("female"), active: onb.profile.sex === "female" },
+      ], function (v) { onb.profile.sex = v; }));
+    } else if (key === "age") {
+      c.appendChild(stepHead(t("age")));
+      var ageF = numField("", onb.profile.age, function (v) { onb.profile.age = clamp(parseInt(v) || 0, 5, 120); });
+      enterInput = ageF.querySelector("input");
+      c.appendChild(ageF);
+    } else if (key === "height") {
+      c.appendChild(stepHead(t("height")));
+      if (onb.units === "metric") {
+        var hF = numField(t("cm"), round(onb.profile.heightCm), function (v) { onb.profile.heightCm = clamp(parseFloat(v) || 0, 80, 250); });
+        enterInput = hF.querySelector("input");
+        c.appendChild(hF);
+      } else {
+        var fi = cmToFtIn(onb.profile.heightCm);
+        c.appendChild(el("div", { class: "row" }, [
+          numField(t("ft"), fi.ft, function (v) { fi.ft = parseInt(v) || 0; onb.profile.heightCm = ftInToCm(fi.ft, fi.in); }),
+          numField(t("in"), fi.in, function (v) { fi.in = parseInt(v) || 0; onb.profile.heightCm = ftInToCm(fi.ft, fi.in); }),
+        ]));
+      }
+    } else if (key === "weight") {
+      c.appendChild(stepHead(t("weight")));
+      var wF = onb.units === "metric"
+        ? numField(t("kg"), round(onb.profile.weightKg), function (v) { onb.profile.weightKg = clamp(parseFloat(v) || 0, 25, 350); })
+        : numField(t("lb"), round(kgToLb(onb.profile.weightKg)), function (v) { onb.profile.weightKg = lbToKg(clamp(parseFloat(v) || 0, 50, 800)); });
+      enterInput = wF.querySelector("input");
+      c.appendChild(wF);
+    } else if (key === "activity") {
+      c.appendChild(stepHead(t("activity")));
+      c.appendChild(selectField([
+        ["sedentary", t("act_sedentary")], ["light", t("act_light")], ["moderate", t("act_moderate")],
+        ["active", t("act_active")], ["very", t("act_very")],
+      ], onb.profile.activity, function (v) { onb.profile.activity = v; }));
+    } else if (key === "goal") {
+      c.appendChild(stepHead(t("goal")));
+      c.appendChild(selectField([
+        ["lose", t("goal_lose")], ["maintain", t("goal_maintain")], ["gain", t("goal_gain")],
+      ], onb.profile.goalType, function (v) { onb.profile.goalType = v; }));
     }
-
-    // activity
-    c.appendChild(fieldLabel(t("activity"), selectField([
-      ["sedentary", t("act_sedentary")], ["light", t("act_light")], ["moderate", t("act_moderate")],
-      ["active", t("act_active")], ["very", t("act_very")],
-    ], onb.profile.activity, function (v) { onb.profile.activity = v; })));
-
-    // goal
-    c.appendChild(fieldLabel(t("goal"), selectField([
-      ["lose", t("goal_lose")], ["maintain", t("goal_maintain")], ["gain", t("goal_gain")],
-    ], onb.profile.goalType, function (v) { onb.profile.goalType = v; })));
-
     wrap.appendChild(c);
-    wrap.appendChild(el("button", { class: "btn", onclick: function () {
-      onb.goal = calcGoal(onb.profile); onb.step = "result"; render();
-    } }, [t("calculate")]));
+
+    // ----- nav -----
+    var isLast = onb.i === STEPS.length - 1;
+    function goNext() {
+      if (isLast) { onb.goal = calcGoal(onb.profile); onb.done = true; onb.slideDir = 1; render(); }
+      else { onb.i++; onb.slideDir = 1; render(); }
+    }
+    function goBack() { onb.i--; onb.slideDir = -1; render(); }
+    if (enterInput) enterInput.addEventListener("keydown", function (e) { if (e.key === "Enter") goNext(); });
+
+    var nav = el("div", { class: "row onb-nav" });
+    if (onb.i > 0) nav.appendChild(el("button", { class: "btn ghost", onclick: goBack }, [t("back")]));
+    nav.appendChild(el("button", { class: "btn", onclick: goNext }, [isLast ? t("calculate") : t("next")]));
+    wrap.appendChild(nav);
     return wrap;
   }
+
+  function stepHead(title, sub) {
+    return el("div", { class: "step-head" }, [
+      el("h2", { text: title }),
+      sub ? el("div", { class: "muted", text: sub }) : null,
+    ]);
+  }
+  function withGoal(g, fn) { var sv = S.goal; S.goal = g; var r = fn(); S.goal = sv; return r; }
 
   function fieldLabel(label, control) {
     return el("label", { class: "field" }, [el("span", { text: label }), control]);
@@ -335,10 +399,18 @@
       return c;
     }
     svg.appendChild(circle("#273449"));
-    svg.appendChild(circle(over ? "#f87171" : "#22c55e", dash + " " + C));
+    var fg = circle(over ? "#f87171" : "#22c55e");
+    fg.setAttribute("stroke-dasharray", String(C));
+    fg.setAttribute("stroke-dashoffset", String(C)); // start empty
+    fg.style.transition = "stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)";
+    svg.appendChild(fg);
+    animateIn(function () { fg.setAttribute("stroke-dashoffset", String(C - dash)); });
     var remaining = goal - value;
+    var bigNum = el("span", { text: "0" });
+    var big = el("div", { class: "big" }, [over ? el("span", { text: "+" }) : null, bigNum]);
+    countUp(bigNum, over ? -remaining : remaining, 800);
     var center = el("div", { class: "ring-center" }, [
-      el("div", { class: "big", text: over ? "+" + round(-remaining) : round(remaining) + "" }),
+      big,
       el("div", { class: "small", text: over ? t("over") : t("remaining") }),
       el("div", { class: "small", text: round(value) + " / " + round(goal) + " " + t("units_kcal") }),
     ]);
@@ -349,9 +421,11 @@
 
   function macroBar(cls, label, val, target) {
     var pct = clamp(target ? val / target : 0, 0, 1) * 100;
+    var fill = el("i", { style: "width:0%" });
+    animateIn(function () { fill.style.width = pct + "%"; });
     return el("div", { class: "macro " + cls }, [
       el("div", { class: "l" }, [el("span", { text: label }), el("span", { text: round(val) + "/" + target + "g" })]),
-      el("div", { class: "bar" }, [el("i", { style: "width:" + pct + "%" })]),
+      el("div", { class: "bar" }, [fill]),
     ]);
   }
 
@@ -630,16 +704,15 @@
     }
 
     var chart = el("div", { class: "chart card" });
-    days.forEach(function (d) {
+    days.forEach(function (d, idx) {
       var h = clamp(d.total / maxV, 0, 1) * 100;
       var over = d.total > S.goal;
       var dayLbl = d.date.toLocaleDateString(S.lang === "ar" ? "ar" : undefined, { weekday: "short" });
-      chart.appendChild(el("div", { class: "col" }, [
-        el("div", { class: "bar" + (over ? " over" : ""), style: "height:" + h + "%" }, [
-          d.total ? el("span", { class: "val", text: round(d.total) }) : null,
-        ]),
-        el("div", { class: "lbl", text: dayLbl }),
-      ]));
+      var bar = el("div", { class: "bar" + (over ? " over" : ""), style: "height:0%;transition-delay:" + (idx * 60) + "ms" }, [
+        d.total ? el("span", { class: "val", text: round(d.total) }) : null,
+      ]);
+      animateIn(function () { bar.style.height = h + "%"; });
+      chart.appendChild(el("div", { class: "col" }, [bar, el("div", { class: "lbl", text: dayLbl })]));
     });
     wrap.appendChild(chart);
     return wrap;
