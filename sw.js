@@ -1,5 +1,5 @@
 /* SnapCal service worker — offline-first app shell cache. */
-const CACHE = "snapcal-v1";
+const CACHE = "snapcal-v2";
 const ASSETS = [
   "./",
   "./index.html",
