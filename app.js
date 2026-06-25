@@ -112,6 +112,9 @@
     milk: "🥛", yogurt: "🥛", cheese: "🧀", hummus: "🥣", falafel: "🧆", nuts: "🥜", peanut_butter: "🥜",
     pizza: "🍕", burger: "🍔", hotdog: "🌭", sandwich: "🥪", burrito: "🌯", shawarma: "🌯",
     kebab: "🍢", rice_chicken: "🍛", soup: "🍲", meatloaf: "🍖", mashed_potato: "🥔",
+    biryani: "🍛", mansaf: "🍛", koshari: "🍝", kabsa: "🍛", maqluba: "🍚", mujadara: "🍚",
+    warak_enab: "🍃", manakish: "🫓", tabbouleh: "🥗", fattoush: "🥗", sushi: "🍣", sushi_roll: "🍣",
+    fried_rice: "🍚", noodles: "🍜", ramen: "🍜", curry: "🍛", dumplings: "🥟", tacos: "🌮",
     ice_cream: "🍦", popsicle: "🍡", chocolate: "🍫", cookie: "🍪", cake: "🍰", donut: "🍩", trifle: "🍮",
     coffee: "☕", espresso: "☕", tea: "🍵", juice: "🧃", soda: "🥤", wine: "🍷", eggnog: "🥛",
   };
