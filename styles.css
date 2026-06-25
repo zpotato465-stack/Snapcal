@@ -266,6 +266,30 @@ label.field > span { display: block; font-size: .85rem; color: var(--muted); mar
 .stat { animation: rise .3s ease both; }
 .macro { animation: rise .34s ease both; }
 
+/* photo-result candidate picker */
+.photo-result-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.photo-result-head .thumb {
+  width: 62px; height: 62px; border-radius: 14px; object-fit: cover; flex: none;
+  border: 2px solid var(--green-d); box-shadow: 0 6px 16px rgba(0,0,0,.4);
+}
+.cand-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.cand {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: start;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  color: var(--text); animation: rise .3s ease both;
+}
+.cand:active { transform: scale(.99); }
+.cand .emoji { font-size: 1.7rem; }
+.cand .info { flex: 1; min-width: 0; }
+.cand .info .nm { font-weight: 700; }
+.cand .conf { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.cand .conf > span { font-size: .76rem; color: var(--muted); white-space: nowrap; }
+.cand .cbar { flex: 1; height: 6px; background: var(--card-2); border-radius: 5px; overflow: hidden; }
+.cand .cbar > i { display: block; height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, var(--green), var(--green-d)); transition: width .6s cubic-bezier(.22,.61,.36,1); }
+.cand .kc { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+[dir="rtl"] .cand .cbar > i { background: linear-gradient(270deg, var(--green), var(--green-d)); }
+
 /* in-app update banner */
 .update-banner {
   position: fixed; left: 50%; transform: translateX(-50%);

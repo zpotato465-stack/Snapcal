@@ -105,7 +105,7 @@
     apple: "🍎", banana: "🍌", orange: "🍊", lemon: "🍋", strawberry: "🍓", pineapple: "🍍",
     pomegranate: "🍎", fig: "🟣", grapes: "🍇", watermelon: "🍉", dates: "🌴",
     egg: "🥚", chicken_breast: "🍗", beef: "🥩", salmon: "🐟", tuna: "🐟", shrimp: "🦐",
-    rice: "🍚", pasta: "🍝", bread: "🍞", arabic_bread: "🫓", bagel: "🥯", pretzel: "🥨",
+    rice: "🍚", red_rice: "🍚", brown_rice: "🍚", pasta: "🍝", bread: "🍞", arabic_bread: "🫓", bagel: "🥯", pretzel: "🥨",
     oats: "🥣", potato: "🥔", fries: "🍟", corn: "🌽",
     broccoli: "🥦", cauliflower: "🥬", cucumber: "🥒", tomato: "🍅", carrot: "🥕",
     pepper: "🫑", mushroom: "🍄", zucchini: "🥒", salad: "🥗", avocado: "🥑", guacamole: "🥑",
@@ -591,27 +591,74 @@
       return new Promise(function (res) {
         if (img.complete && img.naturalWidth) return res();
         img.onload = function () { res(); };
-      }).then(function () { return model.classify(img, 5); });
+      }).then(function () { return model.classify(img, 10); });
     }).then(function (preds) {
-      URL.revokeObjectURL(url);
-      var foodId = matchPrediction(preds);
+      var candidates = collectCandidates(preds);
       closeOverlay(ov);
-      if (foodId) { openServingPicker(window.getFoodById(foodId)); }
-      else { toast(t("noMatch")); }
+      if (candidates.length) { openPhotoResult(url, candidates); }
+      else { URL.revokeObjectURL(url); toast(t("noMatch")); }
     }).catch(function (err) {
-      console.error(err); closeOverlay(ov); toast(t("noMatch"));
+      console.error(err); URL.revokeObjectURL(url); closeOverlay(ov); toast(t("noMatch"));
     });
   }
 
-  function matchPrediction(preds) {
-    for (var i = 0; i < preds.length; i++) {
-      var name = (preds[i].className || "").toLowerCase();
-      for (var j = 0; j < window.MOBILENET_FOOD_MAP.length; j++) {
-        var key = window.MOBILENET_FOOD_MAP[j][0];
-        if (name.indexOf(key) >= 0) return window.MOBILENET_FOOD_MAP[j][1];
-      }
-    }
-    return null;
+  // Collect every food the top predictions map to, keep the best probability per
+  // food, and return them ranked — so the user confirms instead of trusting one guess.
+  function collectCandidates(preds) {
+    var byFood = {};
+    preds.forEach(function (p) {
+      var name = (p.className || "").toLowerCase();
+      // map is ordered specific -> generic; take only the first (best) match per prediction
+      window.MOBILENET_FOOD_MAP.some(function (m) {
+        if (name.indexOf(m[0]) >= 0) {
+          var id = m[1];
+          if (byFood[id] == null || p.probability > byFood[id]) byFood[id] = p.probability;
+          return true;
+        }
+        return false;
+      });
+    });
+    return Object.keys(byFood)
+      .map(function (id) { return { food: window.getFoodById(id), prob: byFood[id] }; })
+      .filter(function (x) { return x.food; })
+      .sort(function (a, b) { return b.prob - a.prob; })
+      .slice(0, 4);
+  }
+
+  function openPhotoResult(url, candidates) {
+    var bg = el("div", { class: "modal-bg" });
+    function close() { if (url) URL.revokeObjectURL(url); if (bg.parentNode) document.body.removeChild(bg); }
+    bg.addEventListener("click", function (e) { if (e.target === bg) close(); });
+
+    var list = el("div", { class: "cand-list" });
+    candidates.forEach(function (c, i) {
+      var conf = Math.round(c.prob * 100);
+      var fill = el("i", { style: "width:0%" });
+      animateIn(function () { fill.style.width = conf + "%"; });
+      var card = el("button", { class: "cand", style: "animation-delay:" + (i * 60) + "ms", onclick: function () {
+        close(); openServingPicker(c.food);
+      } }, [
+        el("div", { class: "emoji", text: emojiFor(c.food.id) }),
+        el("div", { class: "info" }, [
+          el("div", { class: "nm", text: foodName(c.food) }),
+          el("div", { class: "conf" }, [el("span", { text: conf + "% " + t("match") }), el("div", { class: "cbar" }, [fill])]),
+        ]),
+        el("div", { class: "kc", text: c.food.kcal + " " + t("units_kcal") + "/100" + t("units_g") }),
+      ]);
+      list.appendChild(card);
+    });
+
+    var modal = el("div", { class: "modal" }, [
+      el("div", { class: "photo-result-head" }, [
+        el("img", { class: "thumb", src: url, alt: "" }),
+        el("div", {}, [el("h2", { text: t("detected"), style: "margin:0" }), el("div", { class: "muted", text: t("pickPrompt") })]),
+      ]),
+      list,
+      el("button", { class: "btn secondary", onclick: function () { close(); route = "add"; lastRoute = null; render(); } }, ["🔎 " + t("searchInstead")]),
+      el("button", { class: "btn ghost", style: "margin-top:10px", onclick: close }, [t("cancel")]),
+    ]);
+    bg.appendChild(modal);
+    document.body.appendChild(bg);
   }
 
   function photoOverlay() {
